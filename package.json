@@ -7,7 +7,8 @@
     "dev": "nodemon src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "format": "prettier --write \"src/**/*.{ts,js,json,md}\""
   },
   "repository": {
     "type": "git",
@@ -26,6 +27,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.3",
     "nodemon": "^3.1.11",
+    "prettier": "^3.7.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
