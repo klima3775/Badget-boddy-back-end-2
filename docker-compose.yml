@@ -1,17 +1,56 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: budget-buddy-db
+  # --- PostgreSQL (Main Data: Users, Transactions) ---
+  postgres:
+    image: postgres:15-alpine
+    container_name: budget_postgres
     restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "27017:27017"
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - budget_network
+
+  # --- MongoDB (Logs & Raw Data) ---
+  mongo:
+    image: mongo:6-alpine
+    container_name: budget_mongo
+    restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    ports:
+      - '27017:27017'
     volumes:
-      - mongo-data:/data/db
+      - mongo_data:/data/db
+    networks:
+      - budget_network
+
+  # --- Redis (Cache & Sessions) ---
+  redis:
+    image: redis:alpine
+    container_name: budget_redis
+    restart: always
+    ports:
+      - '6379:6379'
+    # Зберігати дані на диск кожні 60 сек, якщо було хоч 1 зміни
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - budget_network
 
 volumes:
-  mongo-data:
+  postgres_data:
+  mongo_data:
+  redis_data:
+
+networks:
+  budget_network:
+    driver: bridge
