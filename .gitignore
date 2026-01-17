@@ -58,3 +58,5 @@ temp/
 .node_repl_history
 
 /src/generated/prisma
+
+/src/generated/prisma

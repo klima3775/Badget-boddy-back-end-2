@@ -19,7 +19,7 @@ services:
 
   # --- MongoDB (Logs & Raw Data) ---
   mongo:
-    image: mongo:6-alpine
+    image: mongo:6
     container_name: budget_mongo
     restart: always
     environment:

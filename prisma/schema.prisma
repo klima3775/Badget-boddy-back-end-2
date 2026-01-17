@@ -1,14 +1,51 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password      String
+  monobankToken String
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  accounts      Account[]
+}
+
+model Account {
+  id           String   @id @default(uuid())
+  monobankId   String   @unique
+  name         String?
+  currencyCode Int
+  balance      Decimal  @default(0) @db.Decimal(19, 4)
+  creditLimit  Decimal  @default(0) @db.Decimal(19, 4)
+  
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  transactions Transaction[]
+}
+
+model Transaction {
+  id           String   @id @default(uuid())
+  monobankId   String   @unique
+  date         DateTime
+  amount       Decimal  @db.Decimal(19, 4)
+  description  String?
+  mcc          Int
+  currencyCode Int
+  
+  accountId    String
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
