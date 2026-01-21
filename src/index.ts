@@ -1,7 +1,7 @@
-import express, { Request, Response } from 'express';
-import dotenv from 'dotenv';
+import express from 'express';
 import cors from 'cors';
-import connectDB from './config/mongodb';
+import dotenv from 'dotenv';
+import connectAllDatabases from './config/init-db.js';
 
 dotenv.config();
 
@@ -10,12 +10,22 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
-connectDB();
 
-app.get('/', (req: Request, res: Response) => {
-  res.json({ message: 'Hello from TypeScript Backend!' });
+app.get('/', (req, res) => {
+  res.send('Budget Buddy API is running 🚀');
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on http://localhost:${PORT}`);
-});
+const startServer = async () => {
+  try {
+    await connectAllDatabases();
+
+    app.listen(PORT, () => {
+      console.log(`\n🚀 Server running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error('💀 Fatal Error: Server failed to start');
+    process.exit(1);
+  }
+};
+
+startServer();
