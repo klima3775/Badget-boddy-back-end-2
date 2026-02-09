@@ -5,17 +5,20 @@ import { validationResult } from 'express-validator';
 import prisma from '../config/prisma.js';
 import redis from '../config/redis.js';
 
+// env variables
 const ACCESS_TOKEN_EXP = process.env.JWT_ACCESS_TIME || '40m';
 const REFRESH_DAYS = Number(process.env.JWT_REFRESH_DAYS || 7);
 const REFRESH_TOKEN_EXP = `${REFRESH_DAYS}d`;
 const REFRESH_TOKEN_REDIS_EXP = REFRESH_DAYS * 24 * 60 * 60;
 
+// Utility functions to generate JWT tokens
 const generateAccessToken = (userId: string) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET as string, {
     expiresIn: ACCESS_TOKEN_EXP as jwt.SignOptions['expiresIn'],
   });
 };
 
+// Generate refresh token
 const generateRefreshToken = (userId: string) => {
   return jwt.sign({ id: userId }, process.env.JWT_REFRESH_SECRET as string, {
     expiresIn: REFRESH_TOKEN_EXP as jwt.SignOptions['expiresIn'],
@@ -103,14 +106,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     });
 
     if (!user) {
-      res.status(400).json({ message: 'Невірний логін або пароль' });
+      res.status(400).json({ message: 'user not found' });
       return;
     }
 
     // 2. Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      res.status(400).json({ message: 'Невірний логін або пароль' });
+      res.status(400).json({ message: 'Invalid email or password' });
       return;
     }
 
@@ -150,12 +153,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
 // === LOGOUT===
 export const logout = async (req: Request, res: Response): Promise<void> => {
-  // Clear cookies
+  const token = req.cookies?.accessToken;
+
+  if (token) {
+    try {
+      const decoded = jwt.decode(token) as jwt.JwtPayload & { id: string };
+      if (decoded?.id) {
+        await redis.del(`refresh_token:${decoded.id}`);
+      }
+    } catch (_) {}
+  }
+
   res.clearCookie('accessToken');
   res.clearCookie('refreshToken');
-
-  // Можна також видалити токен з Redis, якщо ми знаємо userId з мідлвари
-  // await redis.del(`refresh_token:${req.user.id}`);
-
   res.json({ message: 'Logged out successfully' });
 };
