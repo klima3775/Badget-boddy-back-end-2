@@ -168,3 +168,64 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
   res.clearCookie('refreshToken');
   res.json({ message: 'Logged out successfully' });
 };
+
+export const getMe = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req.user as any).id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        monobankToken: true,
+      },
+    });
+
+    if (!user) {
+      res.status(404).json({ message: 'Користувача не знайдено' });
+      return;
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('GetMe Error:', error);
+    res.status(500).json({ message: 'Помилка сервера' });
+  }
+};
+
+export const refresh = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { refreshToken } = req.cookies;
+    if (!refreshToken) {
+      res.status(401).json({ message: 'Refresh token not found' });
+      return;
+    }
+
+    const userData = jwt.verify(
+      refreshToken,
+      process.env.JWT_REFRESH_SECRET as string,
+    ) as jwt.JwtPayload & { id: string };
+
+    const storedToken = await redis.get(`refresh_token:${userData.id}`);
+
+    if (!storedToken || storedToken !== refreshToken) {
+      res.status(403).json({ message: 'Invalid refresh token' });
+      return;
+    }
+
+    const newAccessToken = jwt.sign({ id: userData.id }, process.env.JWT_SECRET as string, {
+      expiresIn: '40m',
+    });
+    res.cookie('accessToken', newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 40 * 60 * 1000,
+    });
+
+    res.json({ message: 'Access token refreshed successfully' });
+  } catch (error) {
+    console.error('Refresh token error:', error);
+    res.status(500).json({ message: 'Server error during token refresh' });
+  }
+};

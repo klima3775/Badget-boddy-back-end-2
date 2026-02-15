@@ -6,10 +6,10 @@ dotenv.config();
 const { REDIS_HOST, REDIS_PORT, REDIS_PASSWORD } = process.env;
 
 if (!REDIS_HOST || !REDIS_PORT) {
-  throw new Error('❌ REDIS_HOST or REDIS_PORT is missing in .env');
+  throw new Error('REDIS_HOST or REDIS_PORT is missing in .env');
 }
 
-console.log(`⏳ Connecting to Redis at ${REDIS_HOST}:${REDIS_PORT}...`);
+console.log(`Connecting to Redis at ${REDIS_HOST}:${REDIS_PORT}...`);
 
 const redis = new Redis({
   host: REDIS_HOST,
@@ -24,11 +24,11 @@ const redis = new Redis({
 });
 
 redis.on('connect', () => {
-  console.log(`✅ Redis Connected successfully`);
+  console.log(`Redis Connected successfully`);
 });
 
 redis.on('error', (err: Error) => {
-  console.error('❌ Redis Connection Error:', err);
+  console.error('Redis Connection Error:', err);
 });
 
 export default redis;
