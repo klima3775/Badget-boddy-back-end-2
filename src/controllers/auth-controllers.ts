@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { validationResult } from 'express-validator';
 import prisma from '../config/prisma.js';
 import redis from '../config/redis.js';
+import { encryptToken } from '../utils/encryption.js';
 
 // env variables
 const ACCESS_TOKEN_EXP = process.env.JWT_ACCESS_TIME || '40m';
@@ -36,7 +37,13 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     const { email, password, monobankToken } = req.body;
 
-    // 2. Check if user exists
+    // 2. Validate monobankToken
+    if (!monobankToken) {
+      res.status(400).json({ message: 'Monobank token is required' });
+      return;
+    }
+
+    // 3. Check if user exists
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -45,16 +52,18 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ message: 'Користувач з таким email вже існує' });
       return;
     }
-    // 3. Hash password
+    // 4. Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 4. Create user in Postgres (Prisma)
-    // Note: encryptToken is currently skipped, or add import for your utility
+    // 5. Encrypt Monobank token
+    const encryptedMonobankToken = encryptToken(monobankToken);
+
+    // 6. Create user in Postgres (Prisma)
     const newUser = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
-        monobankToken: monobankToken,
+        monobankToken: encryptedMonobankToken,
       },
     });
 
