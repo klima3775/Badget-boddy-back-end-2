@@ -25,7 +25,7 @@ router.post(
   ],
   login,
 );
-router.get('/refresh', refresh);
+router.post('/refresh', refresh);
 router.post('/logout', authMiddleware, logout);
 router.get('/me', authMiddleware, getMe);
 

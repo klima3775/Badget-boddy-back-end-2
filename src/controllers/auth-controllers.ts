@@ -5,26 +5,14 @@ import { validationResult } from 'express-validator';
 import prisma from '../config/prisma.js';
 import redis from '../config/redis.js';
 import { encryptToken } from '../utils/encryption.js';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  REFRESH_TOKEN_REDIS_EXP,
+} from '../utils/token.js';
+import { setAuthCookies } from '../utils/cookie.js';
 
-// env variables
-const ACCESS_TOKEN_EXP = process.env.JWT_ACCESS_TIME || '40m';
 const REFRESH_DAYS = Number(process.env.JWT_REFRESH_DAYS || 7);
-const REFRESH_TOKEN_EXP = `${REFRESH_DAYS}d`;
-const REFRESH_TOKEN_REDIS_EXP = REFRESH_DAYS * 24 * 60 * 60;
-
-// Utility functions to generate JWT tokens
-const generateAccessToken = (userId: string) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET as string, {
-    expiresIn: ACCESS_TOKEN_EXP as jwt.SignOptions['expiresIn'],
-  });
-};
-
-// Generate refresh token
-const generateRefreshToken = (userId: string) => {
-  return jwt.sign({ id: userId }, process.env.JWT_REFRESH_SECRET as string, {
-    expiresIn: REFRESH_TOKEN_EXP as jwt.SignOptions['expiresIn'],
-  });
-};
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -73,24 +61,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     await redis.set(`refresh_token:${userId}`, refreshToken, 'EX', REFRESH_TOKEN_REDIS_EXP);
 
-    // 7. Set cookies
-    res.cookie('accessToken', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 40 * 60 * 1000, // 40 хв
-    });
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 днів
-    });
-
-    // TODO: Тут буде логіка Monobank (fetchClientInfo)
-    // const clientInfo = await fetchClientInfo(userId);
-    // await saveClientInfoToRedis(userId, clientInfo);
+    setAuthCookies(res, accessToken, refreshToken, REFRESH_DAYS);
 
     res.status(201).json({ userId, message: 'User registered successfully' });
   } catch (error) {
@@ -134,24 +105,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     // 4. Update Refresh Token in Redis
     await redis.set(`refresh_token:${userId}`, refreshToken, 'EX', REFRESH_TOKEN_REDIS_EXP);
 
-    // TODO: Update Monobank info
-    // const clientInfo = await fetchClientInfo(userId);
-    // await saveClientInfoToRedis(userId, clientInfo);
-
-    // 5. Cookies
-    res.cookie('accessToken', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 40 * 60 * 1000,
-    });
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    setAuthCookies(res, accessToken, refreshToken, REFRESH_DAYS);
 
     res.json({ userId, message: 'Logged in successfully' });
   } catch (error) {
@@ -205,34 +159,41 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
 export const refresh = async (req: Request, res: Response): Promise<void> => {
   try {
     const { refreshToken } = req.cookies;
+
     if (!refreshToken) {
       res.status(401).json({ message: 'Refresh token not found' });
       return;
     }
 
-    const userData = jwt.verify(
-      refreshToken,
-      process.env.JWT_REFRESH_SECRET as string,
-    ) as jwt.JwtPayload & { id: string };
-
-    const storedToken = await redis.get(`refresh_token:${userData.id}`);
-
-    if (!storedToken || storedToken !== refreshToken) {
-      res.status(403).json({ message: 'Invalid refresh token' });
+    // 1. Verify refresh token signature
+    let userData: jwt.JwtPayload & { id: string };
+    try {
+      userData = jwt.verify(
+        refreshToken,
+        process.env.JWT_REFRESH_SECRET as string,
+      ) as jwt.JwtPayload & { id: string };
+    } catch {
+      res.status(401).json({ message: 'Refresh token expired or invalid' });
       return;
     }
 
-    const newAccessToken = jwt.sign({ id: userData.id }, process.env.JWT_SECRET as string, {
-      expiresIn: '40m',
-    });
-    res.cookie('accessToken', newAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 40 * 60 * 1000,
-    });
+    // 2. Check if token exists in Redis
+    const storedToken = await redis.get(`refresh_token:${userData.id}`);
+    if (!storedToken || storedToken !== refreshToken) {
+      res.status(403).json({ message: 'Refresh token revoked' });
+      return;
+    }
 
-    res.json({ message: 'Access token refreshed successfully' });
+    // 3. Generate new access + refresh tokens (rotation)
+    const newAccessToken = generateAccessToken(userData.id);
+    const newRefreshToken = generateRefreshToken(userData.id);
+
+    // 4. Save new refresh token in Redis
+    await redis.set(`refresh_token:${userData.id}`, newRefreshToken, 'EX', REFRESH_TOKEN_REDIS_EXP);
+
+    setAuthCookies(res, newAccessToken, newRefreshToken, REFRESH_DAYS);
+
+    res.json({ message: 'Tokens refreshed successfully' });
   } catch (error) {
     console.error('Refresh token error:', error);
     res.status(500).json({ message: 'Server error during token refresh' });
